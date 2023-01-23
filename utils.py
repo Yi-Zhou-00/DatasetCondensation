@@ -8,18 +8,32 @@ from torch.utils.data import Dataset
 from torchvision import datasets, transforms
 from scipy.ndimage.interpolation import rotate as scipyrotate
 from networks import MLP, ConvNet, LeNet, AlexNet, AlexNetBN, VGG11, VGG11BN, ResNet18, ResNet18BN_AP, ResNet18BN
+from dataset import TinyViratDataset, ToTensor, Normalize
 
 def get_dataset(dataset, data_path):
     if dataset == 'MNIST':
         channel = 1
         im_size = (28, 28)
-        num_classes = 10
+        num_classese = 10
         mean = [0.1307]
         std = [0.3081]
         transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=mean, std=std)])
         dst_train = datasets.MNIST(data_path, train=True, download=True, transform=transform) # no augmentation
         dst_test = datasets.MNIST(data_path, train=False, download=True, transform=transform)
         class_names = [str(c) for c in range(num_classes)]
+    
+    elif dataset == 'TinyVIRAT_test_10_1':
+        channel = 3
+        im_size = (64, 64)
+        num_classes = 10
+        
+        mean = [0.5534823, 0.56502527, 0.5162776]
+        std = [0.15062787, 0.14501576, 0.14504829]
+        # transform = transforms.Compose([transforms.ToTensor()])
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=mean, std=std)])
+        dst_train = TinyViratDataset(transform=transform, test="10_1").all_frames
+        dst_test = TinyViratDataset(train=False, transform=transform, test="10_1") #.all_frames
+        class_names = TinyViratDataset(transform=transform, test="10_1").classes
 
     elif dataset == 'FashionMNIST':
         channel = 1
@@ -558,7 +572,7 @@ def rand_flip(x, param):
     set_seed_DiffAug(param)
     randf = torch.rand(x.size(0), 1, 1, 1, device=x.device)
     if param.Siamese: # Siamese augmentation:
-        randf[:] = randf[0]
+        randf[:] = randf[0].clone()
     return torch.where(randf < prob, x.flip(3), x)
 
 
@@ -567,7 +581,7 @@ def rand_brightness(x, param):
     set_seed_DiffAug(param)
     randb = torch.rand(x.size(0), 1, 1, 1, dtype=x.dtype, device=x.device)
     if param.Siamese:  # Siamese augmentation:
-        randb[:] = randb[0]
+        randb[:] = randb[0].clone()
     x = x + (randb - 0.5)*ratio
     return x
 
@@ -578,7 +592,7 @@ def rand_saturation(x, param):
     set_seed_DiffAug(param)
     rands = torch.rand(x.size(0), 1, 1, 1, dtype=x.dtype, device=x.device)
     if param.Siamese:  # Siamese augmentation:
-        rands[:] = rands[0]
+        rands[:] = rands[0].clone()
     x = (x - x_mean) * (rands * ratio) + x_mean
     return x
 
@@ -589,7 +603,7 @@ def rand_contrast(x, param):
     set_seed_DiffAug(param)
     randc = torch.rand(x.size(0), 1, 1, 1, dtype=x.dtype, device=x.device)
     if param.Siamese:  # Siamese augmentation:
-        randc[:] = randc[0]
+        randc[:] = randc[0].clone()
     x = (x - x_mean) * (randc + ratio) + x_mean
     return x
 
@@ -603,8 +617,8 @@ def rand_crop(x, param):
     set_seed_DiffAug(param)
     translation_y = torch.randint(-shift_y, shift_y + 1, size=[x.size(0), 1, 1], device=x.device)
     if param.Siamese:  # Siamese augmentation:
-        translation_x[:] = translation_x[0]
-        translation_y[:] = translation_y[0]
+        translation_x[:] = translation_x[0].clone()
+        translation_y[:] = translation_y[0].clone()
     grid_batch, grid_x, grid_y = torch.meshgrid(
         torch.arange(x.size(0), dtype=torch.long, device=x.device),
         torch.arange(x.size(2), dtype=torch.long, device=x.device),
@@ -625,8 +639,8 @@ def rand_cutout(x, param):
     set_seed_DiffAug(param)
     offset_y = torch.randint(0, x.size(3) + (1 - cutout_size[1] % 2), size=[x.size(0), 1, 1], device=x.device)
     if param.Siamese:  # Siamese augmentation:
-        offset_x[:] = offset_x[0]
-        offset_y[:] = offset_y[0]
+        offset_x[:] = offset_x[0].clone()
+        offset_y[:] = offset_y[0].clone()
     grid_batch, grid_x, grid_y = torch.meshgrid(
         torch.arange(x.size(0), dtype=torch.long, device=x.device),
         torch.arange(cutout_size[0], dtype=torch.long, device=x.device),

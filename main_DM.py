@@ -43,7 +43,8 @@ def main():
     if not os.path.exists(args.save_path):
         os.mkdir(args.save_path)
 
-    eval_it_pool = np.arange(0, args.Iteration+1, 2000).tolist() if args.eval_mode == 'S' or args.eval_mode == 'SS' else [args.Iteration] # The list of iterations when we evaluate models and record results.
+    # eval_it_pool = np.arange(0, args.Iteration+1, 2000).tolist() if args.eval_mode == 'S' or args.eval_mode == 'SS' else [args.Iteration] # The list of iterations when we evaluate models and record results.
+    eval_it_pool = np.arange(0, args.Iteration+1, 100).tolist() if args.eval_mode == 'S' or args.eval_mode == 'SS' else [args.Iteration] # The list of iterations when we evaluate models and record results.
     print('eval_it_pool: ', eval_it_pool)
     channel, im_size, num_classes, class_names, mean, std, dst_train, dst_test, testloader = get_dataset(args.dataset, args.data_path)
     model_eval_pool = get_eval_pool(args.eval_mode, args.model, args.model)
@@ -65,9 +66,17 @@ def main():
         images_all = []
         labels_all = []
         indices_class = [[] for c in range(num_classes)]
-
+        
         images_all = [torch.unsqueeze(dst_train[i][0], dim=0) for i in range(len(dst_train))]
         labels_all = [dst_train[i][1] for i in range(len(dst_train))]
+        
+        # Map label id to range(num_classes)
+        # label_mapping = dict(zip(list(set(labels_all)), (range(num_classes))))
+        # for i in range(len(labels_all)):
+        #     labels_all[i] = label_mapping[labels_all[i]]
+
+        
+        
         for i, lab in enumerate(labels_all):
             indices_class[lab].append(i)
         images_all = torch.cat(images_all, dim=0).to(args.device)
@@ -80,6 +89,8 @@ def main():
 
         def get_images(c, n): # get random n images from class c
             idx_shuffle = np.random.permutation(indices_class[c])[:n]
+            # print("********** GET IMAGES ***********")
+            # print(images_all[idx_shuffle])
             return images_all[idx_shuffle]
 
         for ch in range(channel):
@@ -94,6 +105,9 @@ def main():
             print('initialize synthetic data from random real images')
             for c in range(num_classes):
                 image_syn.data[c*args.ipc:(c+1)*args.ipc] = get_images(c, args.ipc).detach().data
+                if c == 0:
+                    print(" image_syn shape ------------------------------")
+                    print(image_syn.shape)
         else:
             print('initialize synthetic data from random noise')
 
@@ -107,30 +121,32 @@ def main():
 
             ''' Evaluate synthetic data '''
             if it in eval_it_pool:
-                for model_eval in model_eval_pool:
-                    print('-------------------------\nEvaluation\nmodel_train = %s, model_eval = %s, iteration = %d'%(args.model, model_eval, it))
+                # for model_eval in model_eval_pool:
+                #     print('-------------------------\nEvaluation\nmodel_train = %s, model_eval = %s, iteration = %d'%(args.model, model_eval, it))
 
-                    print('DSA augmentation strategy: \n', args.dsa_strategy)
-                    print('DSA augmentation parameters: \n', args.dsa_param.__dict__)
+                #     print('DSA augmentation strategy: \n', args.dsa_strategy)
+                #     print('DSA augmentation parameters: \n', args.dsa_param.__dict__)
 
-                    accs = []
-                    for it_eval in range(args.num_eval):
-                        net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
-                        image_syn_eval, label_syn_eval = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach()) # avoid any unaware modification
-                        _, acc_train, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args)
-                        accs.append(acc_test)
-                    print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs), model_eval, np.mean(accs), np.std(accs)))
+                #     accs = []
+                #     for it_eval in range(args.num_eval):
+                #         net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
+                #         image_syn_eval, label_syn_eval = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach()) # avoid any unaware modification
+                #         _, acc_train, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args)
+                #         accs.append(acc_test)
+                #     print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs), model_eval, np.mean(accs), np.std(accs)))
 
-                    if it == args.Iteration: # record the final results
-                        accs_all_exps[model_eval] += accs
+                #     if it == args.Iteration: # record the final results
+                #         accs_all_exps[model_eval] += accs
 
                 ''' visualize and save '''
                 save_name = os.path.join(args.save_path, 'vis_%s_%s_%s_%dipc_exp%d_iter%d.png'%(args.method, args.dataset, args.model, args.ipc, exp, it))
                 image_syn_vis = copy.deepcopy(image_syn.detach().cpu())
+                print("image_syn_vis ～～～～～～～～～～～～～～～～～～～～～～～～·")
+                print(image_syn_vis.shape)
                 for ch in range(channel):
                     image_syn_vis[:, ch] = image_syn_vis[:, ch]  * std[ch] + mean[ch]
-                image_syn_vis[image_syn_vis<0] = 0.0
-                image_syn_vis[image_syn_vis>1] = 1.0
+                # image_syn_vis[image_syn_vis<0] = 0.0
+                # image_syn_vis[image_syn_vis>1] = 1.0
                 save_image(image_syn_vis, save_name, nrow=args.ipc) # Trying normalize = True/False may get better visual effects.
 
 
@@ -198,6 +214,10 @@ def main():
 
             if it%10 == 0:
                 print('%s iter = %05d, loss = %.4f' % (get_time(), it, loss_avg))
+
+            # 
+            if it == args.Iteration:
+                pass
 
             if it == args.Iteration: # only record the final results
                 data_save.append([copy.deepcopy(image_syn.detach().cpu()), copy.deepcopy(label_syn.detach().cpu())])
